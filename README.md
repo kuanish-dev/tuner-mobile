@@ -4,11 +4,11 @@
 (алгоритм YIN), сам понимает, какую струну ты дёргаешь, и показывает отклонение с точностью до десятых цента.
 
 <p align="center">
-  <img src="docs/screenshots/tuner-needle.png" width="190" alt="Drop C: стрелка, нижняя струна C2 на −4.1 цента">
-  <img src="docs/screenshots/tuner-strobe.png" width="190" alt="E Standard: строб, струна A2 строит">
-  <img src="docs/screenshots/tuner-7string.png" width="190" alt="7-струнный Drop A: A1 на −13 центов">
-  <img src="docs/screenshots/picker.png" width="190" alt="Выбор строя: drop-строи для 7 струн">
-  <img src="docs/screenshots/metronome.png" width="190" alt="Метроном: 100 ударов в минуту, 4 доли">
+  <img src="docs/screenshots/tuner-needle.png" width="155" alt="Drop C: стрелка, нижняя струна C2 на −4.1 цента">
+  <img src="docs/screenshots/tuner-strobe.png" width="155" alt="E Standard: строб, струна A2 строит">
+  <img src="docs/screenshots/tuner-7string.png" width="155" alt="7-струнный Drop A: A1 на −13 центов">
+  <img src="docs/screenshots/picker.png" width="155" alt="Выбор строя: drop-строи для 7 струн">
+  <img src="docs/screenshots/metronome.png" width="155" alt="Метроном: 100 ударов в минуту, 4 доли">
 </p>
 
 <p align="center"><sub>Drop C со стрелкой · E Standard в режиме строба · 7-струнный Drop A · выбор строя · метроном</sub></p>
