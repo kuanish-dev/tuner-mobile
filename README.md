@@ -3,6 +3,9 @@
 Гитарный тюнер и метроном для Android на Kotlin + Jetpack Compose. Слушает струну через микрофон
 (алгоритм YIN), сам понимает, какую струну ты дёргаешь, и показывает отклонение с точностью до десятых цента.
 
+**[⬇ Скачать APK](https://github.com/kuanish-dev/tuner-mobile/releases/latest/download/DropTuner.apk)** — Android 8+,
+открой ссылку прямо с телефона. Все версии — в [Releases](https://github.com/kuanish-dev/tuner-mobile/releases).
+
 <p align="center">
   <img src="docs/screenshots/tuner-needle.png" width="155" alt="Drop C: стрелка, нижняя струна C2 на −4.1 цента">
   <img src="docs/screenshots/tuner-strobe.png" width="155" alt="E Standard: строб, струна A2 строит">
@@ -75,6 +78,9 @@ adb shell am start -n com.droptuner/.MainActivity --ef demo_hz 65.25
 ```
 
 ## Установка на телефон
+
+Проще всего — открыть на телефоне [ссылку на APK](https://github.com/kuanish-dev/tuner-mobile/releases/latest/download/DropTuner.apk),
+скачать и установить (Android попросит разрешить установку из браузера).
 
 Через USB (на телефоне включить «Отладка по USB» в параметрах разработчика):
 
