@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tuner gauge: arc, needle slightly off centre, pivot. Drawn inside the 66dp safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M31.5,52 A26,26 0 0,1 76.5,52"
+        android:strokeWidth="4"
+        android:strokeColor="#E8EAED"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M54,39 L54,44"
+        android:strokeWidth="3"
+        android:strokeColor="#3DDC84"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M54,65 L60,42"
+        android:strokeWidth="4"
+        android:strokeColor="#3DDC84"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M54,65 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0"
+        android:fillColor="#3DDC84" />
+</vector>
