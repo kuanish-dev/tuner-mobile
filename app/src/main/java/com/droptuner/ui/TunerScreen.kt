@@ -1,5 +1,6 @@
 package com.droptuner.ui
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -25,6 +26,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -33,6 +37,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.droptuner.dsp.INPUT_GATE_DB
 import com.droptuner.music.Note
 import com.droptuner.tuner.IN_TUNE_CENTS
 import com.droptuner.tuner.TunerActions
@@ -45,7 +50,7 @@ import kotlin.math.roundToInt
 class MicAccess(val granted: Boolean, val request: () -> Unit, val openSettings: () -> Unit)
 
 @Composable
-fun TunerScreen(state: TunerUiState, actions: TunerActions, mic: MicAccess) {
+fun TunerScreen(state: TunerUiState, actions: TunerActions, mic: MicAccess, inputDb: () -> Float) {
     var showPicker by rememberSaveable { mutableStateOf(false) }
     var showA4 by rememberSaveable { mutableStateOf(false) }
 
@@ -68,6 +73,8 @@ fun TunerScreen(state: TunerUiState, actions: TunerActions, mic: MicAccess) {
                 if (state.strobe) StrobeDisplay(state.reading?.cents) else TuningGauge(state.reading?.cents)
                 Spacer(Modifier.height(8.dp))
                 Readout(state)
+                Spacer(Modifier.height(10.dp))
+                LevelMeter(inputDb)
             }
         }
         Spacer(Modifier.weight(1f))
@@ -172,6 +179,35 @@ private fun details(reading: TunerReading?): String {
     val hz = "%.2f Гц".format(reading.frequency)
     return if (reading.heard == reading.target) hz else "$hz · слышу ${reading.heard.label}"
 }
+
+/**
+ * Mic level from −90 to −20 dBFS with a mark at the gate: shows at a glance whether the phone
+ * hears the guitar at all. The level is read only while drawing, so it never recomposes the screen.
+ */
+@Composable
+private fun LevelMeter(inputDb: () -> Float) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Микрофон", color = TunerColors.Muted, fontSize = 12.sp)
+        Canvas(Modifier.width(140.dp).height(6.dp)) {
+            val corner = CornerRadius(size.height / 2)
+            val level = meterFraction(inputDb().toDouble())
+            val gate = meterFraction(INPUT_GATE_DB)
+            drawRoundRect(TunerColors.SurfaceHigh, cornerRadius = corner)
+            drawRoundRect(
+                if (level >= gate) TunerColors.Text else TunerColors.Muted,
+                size = Size(size.width * level, size.height),
+                cornerRadius = corner,
+            )
+            val x = size.width * gate
+            drawLine(TunerColors.Close, Offset(x, -3.dp.toPx()), Offset(x, size.height + 3.dp.toPx()), strokeWidth = 2.dp.toPx())
+        }
+    }
+}
+
+private const val METER_MIN_DB = -90.0
+private const val METER_MAX_DB = -20.0
+
+private fun meterFraction(db: Double) = ((db - METER_MIN_DB) / (METER_MAX_DB - METER_MIN_DB)).coerceIn(0.0, 1.0).toFloat()
 
 @Composable
 private fun MicPrompt(mic: MicAccess) {

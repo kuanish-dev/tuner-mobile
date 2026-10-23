@@ -51,6 +51,18 @@ class YinPitchDetectorTest {
     }
 
     @Test
+    fun `tone barely above the room noise`() {
+        // ~6 dB SNR: every dip is shallower than the normal threshold, so a fixed one would see nothing.
+        // A single frame may be several cents off; what matters here is the right note, not an octave or a string away.
+        for (f in range.subList(3, 9)) {
+            for (seed in 1..3) {
+                val signal = Signals.sine(f, sampleRate, frameSize, 0.1) + Signals.noise(frameSize, 0.06, seed)
+                assertCents(f, detect(signal), 20.0)
+            }
+        }
+    }
+
+    @Test
     fun `noise and silence have no pitch`() {
         assertNull(yin.detect(Signals.noise(frameSize, 0.3)))
         assertNull(yin.detect(FloatArray(frameSize)))

@@ -2,9 +2,18 @@ package com.droptuner.dsp
 
 import com.droptuner.music.cents
 import kotlin.math.abs
+import kotlin.math.log10
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sqrt
+
+/**
+ * Frames quieter than this are not analysed at all. It sits far below an unplugged electric guitar
+ * (−60…−70 dBFS at the mic) and just above a quiet room; louder room noise gets through but is
+ * not periodic, so the detector turns it down by itself.
+ */
+const val INPUT_GATE_DB = -80.0
 
 /**
  * Turns raw frames into a steady pitch: ignores quiet frames, runs the detector, drops glitches
@@ -13,7 +22,7 @@ import kotlin.math.sqrt
  */
 class PitchTracker(
     private val detector: YinPitchDetector,
-    private val gateRms: Double = 0.0015,
+    private val gateRms: Double = 10.0.pow(INPUT_GATE_DB / 20),
     private val medianSize: Int = 5,
     private val maxAverage: Int = 12,
     private val maxMisses: Int = 3,
@@ -51,6 +60,9 @@ class PitchTracker(
         return smoothed
     }
 }
+
+/** Frame level in dBFS (0 = full scale), floored at −140 for digital silence. */
+fun levelDb(frame: FloatArray): Double = 20 * log10(max(rms(frame), 1e-7))
 
 fun rms(frame: FloatArray): Double {
     var sum = 0.0

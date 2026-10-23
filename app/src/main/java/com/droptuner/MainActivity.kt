@@ -124,9 +124,11 @@ private fun TunerTab() {
     }
 
     val state by vm.state.collectAsStateWithLifecycle()
+    val inputDb = vm.inputDb.collectAsStateWithLifecycle()
     TunerScreen(
         state = state,
         actions = vm,
+        inputDb = { inputDb.value },
         mic = MicAccess(
             granted = granted,
             request = { request.launch(Manifest.permission.RECORD_AUDIO) },

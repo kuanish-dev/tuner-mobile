@@ -23,6 +23,8 @@ object Signals {
 
     operator fun FloatArray.plus(other: FloatArray) = FloatArray(size) { this[it] + other[it] }
 
+    operator fun FloatArray.times(gain: Double) = FloatArray(size) { (this[it] * gain).toFloat() }
+
     /**
      * Karplus–Strong plucked string, skipping the attack. Returns the signal and its true
      * fundamental: each new sample averages the ones `delay` and `delay - 1` back, so the

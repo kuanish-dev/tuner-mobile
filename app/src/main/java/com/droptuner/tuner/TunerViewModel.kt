@@ -7,6 +7,7 @@ import com.droptuner.audio.AudioOut
 import com.droptuner.audio.FrameSource
 import com.droptuner.dsp.PitchTracker
 import com.droptuner.dsp.YinPitchDetector
+import com.droptuner.dsp.levelDb
 import com.droptuner.music.Note
 import com.droptuner.music.Tuning
 import com.droptuner.music.TuningFamily
@@ -35,6 +36,10 @@ class TunerViewModel(
     )
     val state: StateFlow<TunerUiState> = _state.asStateFlow()
 
+    private val _inputDb = MutableStateFlow(SILENCE_DB)
+    /** Mic level in dBFS, every frame; kept apart from [state] so only the meter redraws. */
+    val inputDb: StateFlow<Float> = _inputDb.asStateFlow()
+
     private val matcher = StringMatcher()
     private var listening: Job? = null
     private var reference: Job? = null
@@ -48,16 +53,20 @@ class TunerViewModel(
         _state.update { it.copy(error = null) }
         listening = viewModelScope.launch {
             input.frames(FRAME_SIZE, HOP_SIZE)
-                .map { tracker.process(it) }
+                .map { frame -> levelDb(frame).toFloat() to tracker.process(frame) }
                 .flowOn(Dispatchers.Default)
                 .catch { e -> _state.update { it.copy(error = e.message ?: "Микрофон недоступен") } }
-                .collect { onPitch(it) }
+                .collect { (level, frequency) ->
+                    _inputDb.value = level
+                    onPitch(frequency)
+                }
         }
     }
 
     fun stopListening() {
         listening?.cancel()
         listening = null
+        _inputDb.value = SILENCE_DB
     }
 
     private fun onPitch(frequency: Double?) {
@@ -155,6 +164,7 @@ class TunerViewModel(
     }
 
     private companion object {
+        const val SILENCE_DB = -140f
         /** ~85 ms at 48 kHz: two periods of the lowest string (C#1 on an 8-string). */
         const val FRAME_SIZE = 4096
         /** ~47 readings a second, which the tracker averages while a note holds. */

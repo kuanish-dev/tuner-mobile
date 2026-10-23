@@ -1,7 +1,9 @@
 package com.droptuner.dsp
 
+import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 data class PitchEstimate(val frequency: Double, val confidence: Double)
 
@@ -15,6 +17,7 @@ class YinPitchDetector(
     minFrequency: Double = 30.0,
     maxFrequency: Double = 1_200.0,
     private val threshold: Double = 0.15,
+    private val maxThreshold: Double = 0.35,
 ) {
     private val tauMin = max(2, (sampleRate / maxFrequency).toInt())
     private val tauMax = ceil(sampleRate / minFrequency).toInt()
@@ -40,9 +43,13 @@ class YinPitchDetector(
         require(frame.size >= frameSize) { "Expected $frameSize samples, got ${frame.size}" }
         difference(frame)
         cumulativeMeanNormalize()
-        val tau = firstDip() ?: return null
-        return PitchEstimate(sampleRate / refine(tau), 1.0 - cmnd[tau])
+        val limit = dipLimit() ?: return null
+        val dip = firstDip(limit) ?: return null
+        return PitchEstimate(sampleRate / refine(dip), 1.0 - cmnd[dip.lowest])
     }
+
+    /** A stretch of lags under the dip limit, and its lowest point. */
+    private class Dip(val start: Int, val end: Int, val lowest: Int)
 
     /**
      * d(τ) = Σ (x[j] − x[j+τ])² over j < window, expanded into two energies and a cross-correlation.
@@ -86,35 +93,69 @@ class YinPitchDetector(
     }
 
     /**
-     * Lowest point of the first dip under the threshold. The whole dip is scanned rather than
-     * walked downhill: on low notes it is hundreds of lags wide and noise ripples would stop a walk early.
+     * How deep a dip has to be. A clean note dips far below [threshold]. When the guitar is barely
+     * louder than the room (unplugged, phone a metre away) every dip is shallower, so the limit
+     * follows the deepest dip up to [maxThreshold]; the first dip nearly as deep as the deepest
+     * still wins, which keeps the true period ahead of its multiples.
      */
-    private fun firstDip(): Int? {
-        var tau = tauMin
-        while (tau < tauMax && cmnd[tau] >= threshold) tau++
-        if (tau >= tauMax) return null
-        var best = tau
-        while (tau < tauMax && cmnd[tau] < threshold) {
-            if (cmnd[tau] < cmnd[best]) best = tau
-            tau++
-        }
-        return best
+    private fun dipLimit(): Double? {
+        var deepest = Double.MAX_VALUE
+        for (tau in tauMin until tauMax) if (cmnd[tau] < deepest) deepest = cmnd[tau]
+        if (deepest >= maxThreshold) return null
+        return max(threshold, deepest + NEARLY_AS_DEEP)
     }
 
     /**
-     * Sub-sample lag: least-squares parabola through the raw difference around the dip.
-     * The raw function is symmetric about the true period (the normalized one is skewed), and the
-     * fit widens with the lag, so low notes average over more points and shrug off noise.
+     * The first dip under [limit]. The whole dip is scanned rather than walked downhill: on low
+     * notes it is hundreds of lags wide and noise ripples would stop a walk early. For the same
+     * reason it only ends once the function climbs clearly back above the limit — otherwise a
+     * ripple at the dip's edge would pass for the whole dip.
      */
-    private fun refine(tau: Int): Double {
-        val k = minOf(max(2, tau / 96), tau - 1, tauMax - tau)
+    private fun firstDip(limit: Double): Dip? {
+        var tau = tauMin
+        while (tau < tauMax && cmnd[tau] >= limit) tau++
+        if (tau >= tauMax) return null
+        val start = tau
+        var lowest = tau
+        while (tau < tauMax && cmnd[tau] < limit + DIP_HYSTERESIS) {
+            if (cmnd[tau] < cmnd[lowest]) lowest = tau
+            tau++
+        }
+        return Dip(start, tau, lowest)
+    }
+
+    /** Sub-sample period from least-squares parabolas through the raw difference function. */
+    private fun refine(dip: Dip): Double {
+        val narrow = max(2, dip.lowest / 96)
+        // A clean dip is sharp: a few lags either side pin it down, and a wider fit would pick up
+        // the ripple of the analysis window itself.
+        if (cmnd[dip.lowest] < CLEAN_DIP) {
+            val c = dip.lowest
+            return c + parabolaVertex(c, minOf(narrow, c - 1, tauMax - c))
+        }
+        // A noisy dip (quiet guitar, loud room) is shallower with a flat, ragged bottom whose lowest
+        // sample can sit tens of lags off. The raw function is still symmetric about the true
+        // period, so fit across the whole dip and re-centre on the vertex until it settles.
+        val halfWidth = max(narrow, (dip.end - dip.start) / 2)
+        var center = dip.lowest.toDouble()
+        repeat(REFINE_PASSES) {
+            val c = center.roundToInt()
+            val vertex = c + parabolaVertex(c, minOf(halfWidth, c - 1, tauMax - c))
+            if (abs(vertex - center) < 0.01) return vertex
+            center = vertex
+        }
+        return center
+    }
+
+    /** Vertex offset from [c] of the least-squares parabola through diff[c − k .. c + k]. */
+    private fun parabolaVertex(c: Int, k: Int): Double {
         var sumY = 0.0
         var sumXY = 0.0
         var sumX2Y = 0.0
         var sumX2 = 0.0
         var sumX4 = 0.0
         for (x in -k..k) {
-            val y = diff[tau + x]
+            val y = diff[c + x]
             val x2 = x.toDouble() * x
             sumY += y
             sumXY += x * y
@@ -125,6 +166,14 @@ class YinPitchDetector(
         val n = 2 * k + 1
         val a = (n * sumX2Y - sumX2 * sumY) / (n * sumX4 - sumX2 * sumX2)
         val b = sumXY / sumX2
-        return if (a <= 0.0) tau.toDouble() else tau + (-b / (2 * a)).coerceIn(-k.toDouble(), k.toDouble())
+        return if (a <= 0.0) 0.0 else (-b / (2 * a)).coerceIn(-k.toDouble(), k.toDouble())
+    }
+
+    private companion object {
+        const val NEARLY_AS_DEEP = 0.05
+        const val DIP_HYSTERESIS = 0.03
+        /** Below this the dip is sharp enough that noise no longer moves its lowest sample. */
+        const val CLEAN_DIP = 0.05
+        const val REFINE_PASSES = 4
     }
 }
