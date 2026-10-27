@@ -63,6 +63,17 @@ class YinPitchDetectorTest {
     }
 
     @Test
+    fun `a noisy note at the bottom of the range never breaks the detector`() {
+        // Its dip runs into the end of the lag range, where the refining fit has no room left.
+        for (f in listOf(30.0, 30.5, 31.0, 31.5, 32.0)) {
+            for (seed in 1..20) {
+                val estimate = yin.detect(Signals.sine(f, sampleRate, frameSize, 0.1) + Signals.noise(frameSize, 0.06, seed))
+                assertTrue("$f Hz, seed $seed: ${estimate?.frequency}", estimate == null || estimate.frequency.isFinite())
+            }
+        }
+    }
+
+    @Test
     fun `noise and silence have no pitch`() {
         assertNull(yin.detect(Signals.noise(frameSize, 0.3)))
         assertNull(yin.detect(FloatArray(frameSize)))

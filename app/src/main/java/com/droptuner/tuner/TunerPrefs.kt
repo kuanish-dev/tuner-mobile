@@ -2,6 +2,7 @@ package com.droptuner.tuner
 
 import android.content.Context
 import androidx.core.content.edit
+import com.droptuner.audio.MicSource
 import com.droptuner.music.Note
 import com.droptuner.music.Tuning
 import com.droptuner.music.Tunings
@@ -16,6 +17,11 @@ class TunerPrefs(context: Context) {
     var strobe: Boolean
         get() = prefs.getBoolean(KEY_STROBE, false)
         set(value) = prefs.edit { putBoolean(KEY_STROBE, value) }
+
+    /** Capture preset chosen by hand; null = Auto. */
+    var micSource: MicSource?
+        get() = prefs.getString(KEY_MIC, null)?.let { name -> MicSource.entries.firstOrNull { it.name == name } }
+        set(value) = prefs.edit { putString(KEY_MIC, value?.name) }
 
     var tuningId: String?
         get() = prefs.getString(KEY_TUNING, null)
@@ -40,5 +46,6 @@ class TunerPrefs(context: Context) {
         const val KEY_TUNING = "tuning"
         const val KEY_CUSTOM = "custom"
         const val KEY_STROBE = "strobe"
+        const val KEY_MIC = "mic_source"
     }
 }

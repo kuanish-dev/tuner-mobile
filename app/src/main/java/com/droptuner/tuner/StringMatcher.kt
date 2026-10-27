@@ -26,12 +26,16 @@ class StringMatcher {
         current = null
     }
 
-    /** [locked] forces a string; null picks the string automatically. */
-    fun match(frequency: Double, tuning: Tuning, a4: Double, locked: Int?): TunerReading {
+    /**
+     * [locked] forces a string; null picks the string automatically. Null when the sound can't be
+     * a string of this tuning: more than an octave below the lowest one is rumble or hum.
+     */
+    fun match(frequency: Double, tuning: Tuning, a4: Double, locked: Int?): TunerReading? {
         if (tuning.isChromatic) {
             val note = Note.nearest(frequency, a4)
             return TunerReading(frequency, null, note, cents(frequency, note.frequency(a4)), note)
         }
+        if (frequency < tuning.strings.minOf { it.frequency(a4) } / 2) return null
         val index = locked ?: pickString(frequency, tuning, a4)
         val target = tuning.strings[index]
         val folded = foldOctave(frequency, target.frequency(a4))

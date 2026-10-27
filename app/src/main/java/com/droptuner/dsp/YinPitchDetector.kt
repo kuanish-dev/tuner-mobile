@@ -45,7 +45,10 @@ class YinPitchDetector(
         cumulativeMeanNormalize()
         val limit = dipLimit() ?: return null
         val dip = firstDip(limit) ?: return null
-        return PitchEstimate(sampleRate / refine(dip), 1.0 - cmnd[dip.lowest])
+        val period = refine(dip)
+        // A period pushed against the end of the lag range belongs to a note below the range.
+        if (!period.isFinite() || period >= tauMax - 1) return null
+        return PitchEstimate(sampleRate / period, 1.0 - cmnd[dip.lowest])
     }
 
     /** A stretch of lags under the dip limit, and its lowest point. */
@@ -140,7 +143,8 @@ class YinPitchDetector(
         var center = dip.lowest.toDouble()
         repeat(REFINE_PASSES) {
             val c = center.roundToInt()
-            val vertex = c + parabolaVertex(c, minOf(halfWidth, c - 1, tauMax - c))
+            // Kept off the ends of the lag range so the fit always has neighbours on both sides.
+            val vertex = (c + parabolaVertex(c, minOf(halfWidth, c - 1, tauMax - c))).coerceIn(1.0, tauMax - 1.0)
             if (abs(vertex - center) < 0.01) return vertex
             center = vertex
         }
@@ -149,6 +153,7 @@ class YinPitchDetector(
 
     /** Vertex offset from [c] of the least-squares parabola through diff[c − k .. c + k]. */
     private fun parabolaVertex(c: Int, k: Int): Double {
+        if (k < 1) return 0.0
         var sumY = 0.0
         var sumXY = 0.0
         var sumX2Y = 0.0

@@ -2,8 +2,13 @@ package com.droptuner
 
 import android.content.Intent
 import com.droptuner.audio.FrameSource
+import com.droptuner.audio.InputInfo
+import com.droptuner.audio.InputState
+import com.droptuner.audio.MicSource
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flow
 import kotlin.math.PI
 import kotlin.math.pow
@@ -35,6 +40,9 @@ private class SyntheticString(
     noiseDb: Double,
 ) : FrameSource {
     override val sampleRate = 48_000
+    override val info: StateFlow<InputInfo> = MutableStateFlow(InputInfo("Демо-сигнал", sampleRate, InputState.OK))
+    override val availableSources = emptyList<MicSource>()
+    override var preferredSource: MicSource? = null
     private val harmonics = listOf(0.35, 0.6, 0.4, 0.25, 0.15, 0.1)
     private val gain = 10.0.pow(levelDb / 20) / sqrt(harmonics.sumOf { it * it } / 2)
     /** Uniform noise of amplitude a has RMS a / √3. */

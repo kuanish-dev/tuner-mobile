@@ -16,9 +16,10 @@ import kotlin.math.sqrt
 const val INPUT_GATE_DB = -80.0
 
 /**
- * Turns raw frames into a steady pitch: ignores quiet frames, runs the detector, drops glitches
- * with a short median, then averages while the note holds still so the reading settles to a
- * fraction of a cent. A jump to another pitch restarts the average at once.
+ * Turns raw frames into a steady pitch: ignores quiet frames, runs the detector, speaks only when
+ * a few estimates in a row agree, drops glitches with a short median, then averages while the note
+ * holds still so the reading settles to a fraction of a cent. A jump to another pitch restarts the
+ * average at once.
  */
 class PitchTracker(
     private val detector: YinPitchDetector,
@@ -27,8 +28,11 @@ class PitchTracker(
     private val maxAverage: Int = 12,
     private val maxMisses: Int = 3,
     private val jumpCents: Double = 20.0,
+    private val agreeFrames: Int = 3,
+    private val agreeCents: Double = 35.0,
 ) {
     private val history = ArrayDeque<Double>(medianSize + 1)
+    private val recent = ArrayDeque<Double?>(agreeFrames + 1)
     private var misses = 0
     private var smoothed = 0.0
     private var averaged = 0
@@ -36,6 +40,8 @@ class PitchTracker(
     /** Smoothed pitch in Hz, or null while nothing clear is sounding. */
     fun process(frame: FloatArray): Double? {
         val estimate = if (rms(frame) < gateRms) null else detector.detect(frame)
+        recent.addLast(estimate?.frequency)
+        if (recent.size > agreeFrames) recent.removeFirst()
         if (estimate == null) {
             // A short gap keeps the history; a longer one means the next note starts fresh.
             if (++misses >= maxMisses) {
@@ -47,6 +53,9 @@ class PitchTracker(
         misses = 0
         history.addLast(estimate.frequency)
         if (history.size > medianSize) history.removeFirst()
+        // Noise near the gate now and then looks periodic, but each time at some random pitch;
+        // a string gives the same pitch frame after frame (they overlap by three quarters).
+        if (!recentAgree()) return null
         val median = history.sorted()[history.size / 2]
 
         if (averaged == 0 || abs(cents(median, smoothed)) > jumpCents) {
@@ -58,6 +67,12 @@ class PitchTracker(
             smoothed *= (median / smoothed).pow(1.0 / averaged)
         }
         return smoothed
+    }
+
+    private fun recentAgree(): Boolean {
+        if (recent.size < agreeFrames || recent.any { it == null }) return false
+        val pitches = recent.filterNotNull()
+        return cents(pitches.max(), pitches.min()) <= agreeCents
     }
 }
 

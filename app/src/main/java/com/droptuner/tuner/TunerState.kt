@@ -1,5 +1,6 @@
 package com.droptuner.tuner
 
+import com.droptuner.audio.MicSource
 import com.droptuner.music.Tuning
 
 /** Within this many cents a string counts as tuned. */
@@ -12,6 +13,8 @@ data class TunerUiState(
     val a4: Int,
     /** Strobe instead of the needle. */
     val strobe: Boolean,
+    /** Capture preset chosen by hand; null = Auto. */
+    val micSource: MicSource?,
     /** String chosen by hand; null = the string is detected automatically. */
     val locked: Int? = null,
     /** Latest pitch, or null while nothing is sounding. */
@@ -32,4 +35,5 @@ interface TunerActions {
     fun toggleEditing()
     fun toggleStrobe()
     fun setA4(hz: Int)
+    fun setMicSource(source: MicSource?)
 }

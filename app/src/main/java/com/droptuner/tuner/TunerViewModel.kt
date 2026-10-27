@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.droptuner.audio.AudioOut
 import com.droptuner.audio.FrameSource
+import com.droptuner.audio.InputInfo
+import com.droptuner.audio.MicSource
 import com.droptuner.dsp.PitchTracker
 import com.droptuner.dsp.YinPitchDetector
 import com.droptuner.dsp.levelDb
@@ -32,13 +34,23 @@ class TunerViewModel(
 ) : ViewModel(), TunerActions {
 
     private val _state = MutableStateFlow(
-        TunerUiState(tuning = prefs.tuning(), custom = prefs.custom(), a4 = prefs.a4, strobe = prefs.strobe),
+        TunerUiState(tuning = prefs.tuning(), custom = prefs.custom(), a4 = prefs.a4, strobe = prefs.strobe, micSource = prefs.micSource),
     )
     val state: StateFlow<TunerUiState> = _state.asStateFlow()
 
     private val _inputDb = MutableStateFlow(SILENCE_DB)
     /** Mic level in dBFS, every frame; kept apart from [state] so only the meter redraws. */
     val inputDb: StateFlow<Float> = _inputDb.asStateFlow()
+
+    /** Which preset is in use and whether sound is arriving at all. */
+    val inputInfo: StateFlow<InputInfo> = input.info
+
+    /** Presets the user can pick from in the mic sheet. */
+    val availableSources: List<MicSource> get() = input.availableSources
+
+    init {
+        input.preferredSource = prefs.micSource
+    }
 
     private val matcher = StringMatcher()
     private var listening: Job? = null
@@ -73,13 +85,13 @@ class TunerViewModel(
         val s = _state.value
         val now = SystemClock.elapsedRealtime()
         // While the reference note plays the mic hears the phone itself: that must not count.
-        if (frequency == null || s.playing != null) {
+        val reading = if (frequency == null || s.playing != null) null else matcher.match(frequency, s.tuning, s.a4.toDouble(), s.locked)
+        if (reading == null) {
             streakString = null
             if (s.reading != null && now - lastPitchAt > HOLD_MS) _state.value = s.copy(reading = null)
             return
         }
         lastPitchAt = now
-        val reading = matcher.match(frequency, s.tuning, s.a4.toDouble(), s.locked)
         val string = reading.stringIndex
         if (abs(reading.cents) > IN_TUNE_CENTS || string != streakString) {
             streakString = if (abs(reading.cents) <= IN_TUNE_CENTS) string else null
@@ -149,6 +161,16 @@ class TunerViewModel(
         val a4 = hz.coerceIn(MIN_A4, MAX_A4)
         prefs.a4 = a4
         retune { it.copy(a4 = a4) }
+    }
+
+    override fun setMicSource(source: MicSource?) {
+        prefs.micSource = source
+        input.preferredSource = source
+        _state.update { it.copy(micSource = source) }
+        if (listening != null) {
+            stopListening()
+            startListening()
+        }
     }
 
     private fun saveCustom(custom: Tuning) {
