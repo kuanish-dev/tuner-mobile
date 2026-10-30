@@ -7,6 +7,8 @@ import com.droptuner.audio.AudioOut
 import com.droptuner.audio.FrameSource
 import com.droptuner.audio.InputInfo
 import com.droptuner.audio.MicSource
+import com.droptuner.dsp.INPUT_GATE_DB
+import com.droptuner.dsp.NoiseFilter
 import com.droptuner.dsp.PitchTracker
 import com.droptuner.dsp.YinPitchDetector
 import com.droptuner.dsp.levelDb
@@ -39,13 +41,13 @@ class TunerViewModel(
     val state: StateFlow<TunerUiState> = _state.asStateFlow()
 
     private val _inputDb = MutableStateFlow(SILENCE_DB)
-    /** Mic level in dBFS, every frame; kept apart from [state] so only the meter redraws. */
     val inputDb: StateFlow<Float> = _inputDb.asStateFlow()
 
-    /** Which preset is in use and whether sound is arriving at all. */
+    private val _gateDb = MutableStateFlow(INPUT_GATE_DB.toFloat())
+    val gateDb: StateFlow<Float> = _gateDb.asStateFlow()
+
     val inputInfo: StateFlow<InputInfo> = input.info
 
-    /** Presets the user can pick from in the mic sheet. */
     val availableSources: List<MicSource> get() = input.availableSources
 
     init {
@@ -61,15 +63,20 @@ class TunerViewModel(
 
     fun startListening() {
         if (listening?.isActive == true) return
+        val filter = NoiseFilter(input.sampleRate, FRAME_SIZE, HOP_SIZE)
         val tracker = PitchTracker(YinPitchDetector(input.sampleRate, FRAME_SIZE))
         _state.update { it.copy(error = null) }
         listening = viewModelScope.launch {
             input.frames(FRAME_SIZE, HOP_SIZE)
-                .map { frame -> levelDb(frame).toFloat() to tracker.process(frame) }
+                .map { frame ->
+                    val clean = filter.clean(frame)
+                    Analysis(levelDb(clean).toFloat(), tracker.process(clean), tracker.gateDb.toFloat())
+                }
                 .flowOn(Dispatchers.Default)
                 .catch { e -> _state.update { it.copy(error = e.message ?: "Микрофон недоступен") } }
-                .collect { (level, frequency) ->
+                .collect { (level, frequency, gate) ->
                     _inputDb.value = level
+                    _gateDb.value = gate
                     onPitch(frequency)
                 }
         }
@@ -79,12 +86,14 @@ class TunerViewModel(
         listening?.cancel()
         listening = null
         _inputDb.value = SILENCE_DB
+        _gateDb.value = INPUT_GATE_DB.toFloat()
     }
+
+    private data class Analysis(val levelDb: Float, val frequency: Double?, val gateDb: Float)
 
     private fun onPitch(frequency: Double?) {
         val s = _state.value
         val now = SystemClock.elapsedRealtime()
-        // While the reference note plays the mic hears the phone itself: that must not count.
         val reading = if (frequency == null || s.playing != null) null else matcher.match(frequency, s.tuning, s.a4.toDouble(), s.locked)
         if (reading == null) {
             streakString = null
@@ -145,7 +154,6 @@ class TunerViewModel(
             return
         }
         if (s.tuning.isChromatic) return
-        // Editing always works on the custom slot, seeded from whatever tuning is on screen.
         val custom = if (s.tuning.family == TuningFamily.CUSTOM) s.tuning else Tunings.custom(s.tuning.strings)
         saveCustom(custom)
         retune { it.copy(tuning = custom, custom = custom, editing = true) }
@@ -178,7 +186,6 @@ class TunerViewModel(
         prefs.tuningId = Tunings.CUSTOM_ID
     }
 
-    /** Applies a change that makes what was measured so far meaningless. */
     private fun retune(change: (TunerUiState) -> TunerUiState) {
         matcher.reset()
         streakString = null
@@ -187,20 +194,14 @@ class TunerViewModel(
 
     private companion object {
         const val SILENCE_DB = -140f
-        /** ~85 ms at 48 kHz: two periods of the lowest string (C#1 on an 8-string). */
         const val FRAME_SIZE = 4096
-        /** ~47 readings a second, which the tracker averages while a note holds. */
         const val HOP_SIZE = 1024
-        /** Keep showing the last note this long after the sound fades. */
         const val HOLD_MS = 1_200L
-        /** How long a string must stay in tune before it gets its check mark. */
         const val CONFIRM_MS = 500L
-        /** A checked string loses its mark once it drifts this far. */
         const val DETUNED_CENTS = 8.0
-        /** Room echo after the reference note that the mic shouldn't take for a string. */
         const val ECHO_MS = 250L
-        const val LOWEST_MIDI = 24  // C1
-        const val HIGHEST_MIDI = 76 // E5
+        const val LOWEST_MIDI = 24
+        const val HIGHEST_MIDI = 76
         const val MIN_A4 = 415
         const val MAX_A4 = 466
     }

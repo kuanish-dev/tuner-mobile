@@ -4,13 +4,10 @@ import kotlin.math.log2
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
-/** A pitch of the equal-tempered scale, stored as a MIDI number (A4 = 69). */
 @JvmInline
 value class Note(val midi: Int) {
-    /** Sharp spelling: C, C#, D … */
     val name: String get() = SHARP_NAMES[midi.mod(12)]
 
-    /** "C#/Db" for accidentals, the plain letter otherwise — how tunings are usually called. */
     val nameWithFlat: String get() = FLAT_ALIASES[name]?.let { "$name/$it" } ?: name
 
     val octave: Int get() = midi.floorDiv(12) - 1
@@ -30,7 +27,6 @@ value class Note(val midi: Int) {
         private val FLAT_ALIASES = mapOf("C#" to "Db", "D#" to "Eb", "F#" to "Gb", "G#" to "Ab", "A#" to "Bb")
         private val LABEL = Regex("""([A-G])([#b]?)(-?\d)""")
 
-        /** Parses "E2", "C#3" or "Bb1". */
         fun parse(label: String): Note {
             val match = requireNotNull(LABEL.matchEntire(label)) { "Not a note: $label" }
             val (letter, accidental, octave) = match.destructured
@@ -47,5 +43,4 @@ value class Note(val midi: Int) {
     }
 }
 
-/** Distance from [reference] to [frequency] in cents (100 per semitone, positive = sharp). */
 fun cents(frequency: Double, reference: Double): Double = 1200.0 * log2(frequency / reference)

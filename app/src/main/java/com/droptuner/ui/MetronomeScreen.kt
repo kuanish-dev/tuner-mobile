@@ -87,7 +87,6 @@ fun MetronomeScreen(state: MetronomeUiState, actions: MetronomeActions) {
     }
 }
 
-/** One dot per beat; the one being heard lights up, the bar's first beat in green. */
 @Composable
 private fun BeatDots(beats: Int, current: Int) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {

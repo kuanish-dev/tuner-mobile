@@ -8,7 +8,6 @@ enum class TuningFamily(val title: String) {
     ALTERNATE("Открытые и другие"),
 }
 
-/** [strings] go from the lowest (thickest) string to the highest; none means chromatic (any note). */
 data class Tuning(
     val id: String,
     val name: String,
@@ -24,20 +23,18 @@ object Tunings {
     val CHROMATIC = Tuning("chromatic", TuningFamily.CHROMATIC.title, TuningFamily.CHROMATIC, emptyList())
     val STRING_COUNTS = listOf(6, 7, 8)
 
-    /** Semitones above the lowest string in standard tuning. */
     private val STANDARD_INTERVALS = mapOf(
-        6 to listOf(0, 5, 10, 15, 19, 24),         // E A D G B E
-        7 to listOf(0, 5, 10, 15, 20, 24, 29),     // B E A D G B E
-        8 to listOf(0, 5, 10, 15, 20, 25, 29, 34), // F# B E A D G B E
+        6 to listOf(0, 5, 10, 15, 19, 24),
+        7 to listOf(0, 5, 10, 15, 20, 24, 29),
+        8 to listOf(0, 5, 10, 15, 20, 25, 29, 34),
     )
 
-    /** Lowest-string MIDI notes each instrument gets, from the highest tuning down. */
     private class Range(val strings: Int, val standard: IntProgression, val drop: IntProgression)
 
     private val RANGES = listOf(
-        Range(6, standard = 40 downTo 33, drop = 38 downTo 30), // E…A Standard, Drop D…Drop F#
-        Range(7, standard = 35 downTo 30, drop = 33 downTo 28), // B…F# Standard, Drop A…Drop E
-        Range(8, standard = 30 downTo 26, drop = 28 downTo 25), // F#…D Standard, Drop E…Drop C#
+        Range(6, standard = 40 downTo 33, drop = 38 downTo 30),
+        Range(7, standard = 35 downTo 30, drop = 33 downTo 28),
+        Range(8, standard = 30 downTo 26, drop = 28 downTo 25),
     )
 
     private val ALTERNATE = listOf(
@@ -74,7 +71,6 @@ object Tunings {
     fun standard(lowest: Note, strings: Int): List<Note> =
         STANDARD_INTERVALS.getValue(strings).map { lowest + it }
 
-    /** Drop X: the standard tuning a whole tone above X with only the lowest string dropped to X. */
     fun drop(lowest: Note, strings: Int): List<Note> =
         listOf(lowest) + standard(lowest + 2, strings).drop(1)
 

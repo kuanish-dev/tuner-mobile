@@ -20,52 +20,34 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
 import kotlin.math.max
 
-/** Android capture presets, in the order Auto tries them. */
 enum class MicSource(val title: String, val preset: Int) {
-    /** What most tuners use: works on practically every phone. */
     MIC("Обычный", MediaRecorder.AudioSource.MIC),
     VOICE_RECOGNITION("Распознавание речи", MediaRecorder.AudioSource.VOICE_RECOGNITION),
     UNPROCESSED("Без обработки", MediaRecorder.AudioSource.UNPROCESSED),
     CAMCORDER("Видеокамера", MediaRecorder.AudioSource.CAMCORDER),
 }
 
-/**
- * Streams overlapping mono frames from the microphone as 16-bit PCM, the format every phone
- * records natively. In Auto mode a preset that only ever delivers exact zeros is dropped for the
- * next one, since some phones advertise presets that are not wired to a mic.
- */
 class MicInput(private val context: Context) : FrameSource {
-
-    /** 48 kHz is native on nearly every phone (no resampling); 44.1 kHz is the rate Android guarantees. */
     override val sampleRate: Int =
         listOf(48_000, 44_100).firstOrNull { AudioRecord.getMinBufferSize(it, CHANNEL, ENCODING) > 0 } ?: 44_100
 
     private val _info = MutableStateFlow(InputInfo("—", sampleRate, InputState.STARTING))
     override val info: StateFlow<InputInfo> = _info.asStateFlow()
-
     override var preferredSource: MicSource? = null
-
-    /** Presets this phone offers, in Auto order. */
     override val availableSources: List<MicSource> by lazy {
         val audio = context.getSystemService(AudioManager::class.java)
         val unprocessed = audio.getProperty(AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED) == "true"
         MicSource.entries.filter { it != MicSource.UNPROCESSED || unprocessed }
     }
 
-    /** The caller must already hold RECORD_AUDIO. */
     override fun frames(frameSize: Int, hopSize: Int): Flow<FloatArray> = flow {
         val candidates = preferredSource?.let { listOf(it) } ?: availableSources
         for ((i, source) in candidates.withIndex()) {
             val last = i == candidates.lastIndex
-            // Only the last candidate keeps listening through silence (and reports it).
             if (!capture(source, frameSize, hopSize, mayGiveUp = !last)) return@flow
         }
     }.flowOn(Dispatchers.IO)
 
-    /**
-     * Records from [source] until cancelled and returns false. Returns true early — so the next
-     * preset can be tried — only if [mayGiveUp] and the preset won't open or stays digitally silent.
-     */
     @SuppressLint("MissingPermission")
     private suspend fun FlowCollector<FloatArray>.capture(source: MicSource, frameSize: Int, hopSize: Int, mayGiveUp: Boolean): Boolean {
         _info.value = InputInfo(source.title, sampleRate, InputState.STARTING)
@@ -112,14 +94,12 @@ class MicInput(private val context: Context) : FrameSource {
         }
     }
 
-    /** Android 10+ hands the mic to calls and assistants and feeds the rest of us zeros. */
     private fun isTakenBySystem(record: AudioRecord): Boolean =
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && record.activeRecordingConfiguration?.isClientSilenced == true
 
     private companion object {
         const val CHANNEL = AudioFormat.CHANNEL_IN_MONO
         const val ENCODING = AudioFormat.ENCODING_PCM_16BIT
-        /** ~0.2 s at a 1024-sample hop: often enough for the status line, cheap on the audio thread. */
         const val STATUS_EVERY_HOPS = 10
     }
 }

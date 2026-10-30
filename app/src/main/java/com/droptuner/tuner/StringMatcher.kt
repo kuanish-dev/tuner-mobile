@@ -7,18 +7,13 @@ import kotlin.math.abs
 import kotlin.math.min
 
 data class TunerReading(
-    /** What was heard, moved by an octave if the detector jumped to the 2nd harmonic. */
     val frequency: Double,
-    /** Null in chromatic mode, where the target is simply the nearest note. */
     val stringIndex: Int?,
     val target: Note,
-    /** Deviation from [target]: negative = flat (tighten), positive = sharp (loosen). */
     val cents: Double,
-    /** Nearest note of the chromatic scale to [frequency]. */
     val heard: Note,
 )
 
-/** Decides which string of the tuning is being played and how far off it is. */
 class StringMatcher {
     private var current: Int? = null
 
@@ -26,10 +21,6 @@ class StringMatcher {
         current = null
     }
 
-    /**
-     * [locked] forces a string; null picks the string automatically. Null when the sound can't be
-     * a string of this tuning: more than an octave below the lowest one is rumble or hum.
-     */
     fun match(frequency: Double, tuning: Tuning, a4: Double, locked: Int?): TunerReading? {
         if (tuning.isChromatic) {
             val note = Note.nearest(frequency, a4)
@@ -46,25 +37,17 @@ class StringMatcher {
         fun cost(string: Int) = distance(frequency, tuning.strings[string].frequency(a4))
         val best = tuning.strings.indices.minBy(::cost)
         val previous = current?.takeIf { it in tuning.strings.indices }
-        // Far from every string (e.g. retuning to a much lower drop) the choice is ambiguous: don't flicker.
         val keep = previous != null && cost(best) > CLEAR_MATCH && cost(previous) - cost(best) < STICKINESS
         return (if (keep) previous!! else best).also { current = it }
     }
 
     companion object {
-        /** A string this close (in cents) wins immediately. */
         private const val CLEAR_MATCH = 100.0
-        /** Otherwise the current string stays unless another one is this much closer. */
         private const val STICKINESS = 100.0
-        /** Cost of assuming the detector locked onto the 2nd harmonic of a low string. */
         private const val OCTAVE_PENALTY = 150.0
-        /** Readings this close to an exact octave of the target count as octave errors. */
         private const val OCTAVE_WINDOW = 70.0
-
-        /** Cents from [frequency] to a string tuned to [target], allowing for a lost fundamental. */
         internal fun distance(frequency: Double, target: Double): Double =
             min(abs(cents(frequency, target)), abs(cents(frequency / 2, target)) + OCTAVE_PENALTY)
-
         internal fun foldOctave(frequency: Double, target: Double): Double {
             val c = cents(frequency, target)
             return when {

@@ -38,12 +38,10 @@ import com.droptuner.audio.MicSource
 import com.droptuner.music.Note
 import com.droptuner.tuner.IN_TUNE_CENTS
 import com.droptuner.tuner.TunerActions
-import com.droptuner.tuner.TunerReading
 import com.droptuner.tuner.TunerUiState
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-/** Microphone permission status plus the ways to fix it. */
 class MicAccess(val granted: Boolean, val request: () -> Unit, val openSettings: () -> Unit)
 
 @Composable
@@ -53,6 +51,7 @@ fun TunerScreen(
     mic: MicAccess,
     input: InputInfo,
     inputDb: () -> Float,
+    gateDb: () -> Float,
     sources: List<MicSource>,
 ) {
     var showPicker by rememberSaveable { mutableStateOf(false) }
@@ -79,7 +78,7 @@ fun TunerScreen(
                 Spacer(Modifier.height(8.dp))
                 Readout(state, input)
                 Spacer(Modifier.height(6.dp))
-                LevelMeter(inputDb, onClick = { showMic = true })
+                LevelMeter(inputDb, gateDb, onClick = { showMic = true })
             }
         }
         Spacer(Modifier.weight(1f))
@@ -106,6 +105,7 @@ fun TunerScreen(
         MicSheet(
             info = input,
             inputDb = inputDb,
+            gateDb = gateDb,
             sources = sources,
             selected = state.micSource,
             onSelect = actions::setMicSource,
@@ -165,13 +165,11 @@ private fun Readout(state: TunerUiState, input: InputInfo) {
     }
     Text(reading?.let { formatCents(it.cents) } ?: " ", color = color, fontSize = 30.sp, fontWeight = FontWeight.SemiBold)
     Spacer(Modifier.height(4.dp))
-    // With nothing heard, a dead or taken mic is the thing to tell about.
     val warning = if (reading == null && state.playing == null) inputWarning(input.state) else null
     Text(warning?.first ?: direction(state), color = if (warning != null) TunerColors.Off else TunerColors.Text, fontSize = 18.sp)
-    Text(warning?.second ?: details(reading), color = TunerColors.Muted, fontSize = 14.sp, textAlign = TextAlign.Center)
+    Text(warning?.second ?: details(state, note), color = TunerColors.Muted, fontSize = 14.sp, textAlign = TextAlign.Center)
 }
 
-/** Tenths of a cent near the target, whole cents further out where tenths are noise. */
 private fun formatCents(cents: Double): String {
     val sign = if (cents < 0) "−" else "+"
     return when {
@@ -192,9 +190,11 @@ private fun direction(state: TunerUiState): String {
     }
 }
 
-private fun details(reading: TunerReading?): String {
-    if (reading == null) return " "
-    val hz = "%.2f Гц".format(reading.frequency)
+private fun details(state: TunerUiState, note: Note?): String {
+    val reading = state.reading
+    val target = note?.let { "%.2f Гц".format(it.frequency(state.a4.toDouble())) }
+    if (reading == null) return target?.let { "цель $it" } ?: " "
+    val hz = "%.2f → $target".format(reading.frequency)
     return if (reading.heard == reading.target) hz else "$hz · слышу ${reading.heard.label}"
 }
 

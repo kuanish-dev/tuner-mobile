@@ -18,7 +18,6 @@ class TunerPrefs(context: Context) {
         get() = prefs.getBoolean(KEY_STROBE, false)
         set(value) = prefs.edit { putBoolean(KEY_STROBE, value) }
 
-    /** Capture preset chosen by hand; null = Auto. */
     var micSource: MicSource?
         get() = prefs.getString(KEY_MIC, null)?.let { name -> MicSource.entries.firstOrNull { it.name == name } }
         set(value) = prefs.edit { putString(KEY_MIC, value?.name) }

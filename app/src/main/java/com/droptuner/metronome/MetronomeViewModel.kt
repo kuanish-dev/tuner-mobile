@@ -19,14 +19,16 @@ data class MetronomeUiState(
     val bpm: Int,
     val beatsPerBar: Int,
     val playing: Boolean = false,
-    /** Beat being heard right now (0 = the accented first beat), -1 when stopped. */
     val beat: Int = -1,
 )
 
 interface MetronomeActions {
     fun toggle()
+
     fun setBpm(bpm: Int)
+
     fun setBeatsPerBar(beats: Int)
+
     fun tap()
 }
 
@@ -71,7 +73,6 @@ class MetronomeViewModel(
         clicks = track
         _state.update { it.copy(playing = true) }
         playback = viewModelScope.launch {
-            // Beats still in the speaker's buffer after stop() must not light the dots again.
             speaker.playClicks(track) { beat -> if (clicks === track) _state.update { it.copy(beat = beat) } }
         }
     }
@@ -89,7 +90,6 @@ class MetronomeViewModel(
         _state.update { it.copy(beatsPerBar = beats) }
     }
 
-    /** Tap tempo: the average of the last few intervals; a long pause starts a new count. */
     override fun tap() {
         val now = SystemClock.elapsedRealtime()
         if (taps.isNotEmpty() && now - taps.last() > TAP_RESET_MS) taps.clear()

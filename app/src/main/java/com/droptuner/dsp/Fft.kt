@@ -4,7 +4,6 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-/** In-place iterative radix-2 FFT over separate real/imaginary arrays of a fixed power-of-two [size]. */
 class Fft(val size: Int) {
     private val bits = Integer.numberOfTrailingZeros(size)
     private val cosTable = DoubleArray(size / 2) { cos(2 * PI * it / size) }
@@ -15,7 +14,6 @@ class Fft(val size: Int) {
         require(size >= 2 && size and (size - 1) == 0) { "FFT size must be a power of two, got $size" }
     }
 
-    /** Forward transform uses e^(−2πi·kn/N); [inverse] also divides by N. */
     fun transform(re: DoubleArray, im: DoubleArray, inverse: Boolean = false) {
         for (i in 0 until size) {
             val j = reversed[i]

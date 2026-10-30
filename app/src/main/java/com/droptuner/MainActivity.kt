@@ -65,12 +65,10 @@ import com.droptuner.ui.TunerScreen
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Always-dark UI: light status/navigation icons regardless of the system theme.
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
         )
-        // Tuning takes both hands: don't let the screen go dark mid-string.
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContent {
             DropTunerTheme { App() }
@@ -87,7 +85,6 @@ private fun App() {
     val metronomeState by metronome.state.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableStateOf(Tab.TUNER) }
 
-    // The metronome keeps going across tabs but not in the background.
     LifecycleStartEffect(metronome) {
         onStopOrDispose { metronome.stop() }
     }
@@ -116,7 +113,6 @@ private fun TunerTab() {
     LaunchedEffect(Unit) {
         if (!granted) request.launch(Manifest.permission.RECORD_AUDIO)
     }
-    // Listen only while this tab is on screen; re-check on resume in case access was granted in Settings.
     LifecycleResumeEffect(granted) {
         granted = context.hasMicPermission()
         if (granted) vm.startListening()
@@ -125,12 +121,14 @@ private fun TunerTab() {
 
     val state by vm.state.collectAsStateWithLifecycle()
     val inputDb = vm.inputDb.collectAsStateWithLifecycle()
+    val gateDb = vm.gateDb.collectAsStateWithLifecycle()
     val inputInfo by vm.inputInfo.collectAsStateWithLifecycle()
     TunerScreen(
         state = state,
         actions = vm,
         input = inputInfo,
         inputDb = { inputDb.value },
+        gateDb = { gateDb.value },
         sources = vm.availableSources,
         mic = MicAccess(
             granted = granted,

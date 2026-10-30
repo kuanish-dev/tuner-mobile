@@ -8,22 +8,13 @@ import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sqrt
 
-/**
- * Frames quieter than this are not analysed at all. It sits far below an unplugged electric guitar
- * (−60…−70 dBFS at the mic) and just above a quiet room; louder room noise gets through but is
- * not periodic, so the detector turns it down by itself.
- */
 const val INPUT_GATE_DB = -80.0
 
-/**
- * Turns raw frames into a steady pitch: ignores quiet frames, runs the detector, speaks only when
- * a few estimates in a row agree, drops glitches with a short median, then averages while the note
- * holds still so the reading settles to a fraction of a cent. A jump to another pitch restarts the
- * average at once.
- */
 class PitchTracker(
     private val detector: YinPitchDetector,
-    private val gateRms: Double = 10.0.pow(INPUT_GATE_DB / 20),
+    private val floorGateDb: Double = INPUT_GATE_DB,
+    private val roomMarginDb: Double = 6.0,
+    private val roomRiseDb: Double = 0.1,
     private val medianSize: Int = 5,
     private val maxAverage: Int = 12,
     private val maxMisses: Int = 3,
@@ -36,33 +27,31 @@ class PitchTracker(
     private var misses = 0
     private var smoothed = 0.0
     private var averaged = 0
+    private var roomDb = Double.POSITIVE_INFINITY
+    val gateDb: Double get() = if (roomDb.isFinite()) max(floorGateDb, roomDb + roomMarginDb) else floorGateDb
 
-    /** Smoothed pitch in Hz, or null while nothing clear is sounding. */
     fun process(frame: FloatArray): Double? {
-        val estimate = if (rms(frame) < gateRms) null else detector.detect(frame)
+        val level = levelDb(frame)
+        val estimate = if (level < gateDb) null else detector.detect(frame)
         recent.addLast(estimate?.frequency)
         if (recent.size > agreeFrames) recent.removeFirst()
         if (estimate == null) {
-            // A short gap keeps the history; a longer one means the next note starts fresh.
             if (++misses >= maxMisses) {
                 history.clear()
                 averaged = 0
             }
+            if (history.isEmpty()) roomDb = if (level < roomDb) level else min(level, roomDb + roomRiseDb)
             return null
         }
         misses = 0
         history.addLast(estimate.frequency)
         if (history.size > medianSize) history.removeFirst()
-        // Noise near the gate now and then looks periodic, but each time at some random pitch;
-        // a string gives the same pitch frame after frame (they overlap by three quarters).
         if (!recentAgree()) return null
         val median = history.sorted()[history.size / 2]
-
         if (averaged == 0 || abs(cents(median, smoothed)) > jumpCents) {
             smoothed = median
             averaged = 1
         } else {
-            // Running mean in the log domain over the last `maxAverage` readings at most.
             averaged = min(averaged + 1, maxAverage)
             smoothed *= (median / smoothed).pow(1.0 / averaged)
         }
@@ -76,7 +65,6 @@ class PitchTracker(
     }
 }
 
-/** Frame level in dBFS (0 = full scale), floored at −140 for digital silence. */
 fun levelDb(frame: FloatArray): Double = 20 * log10(max(rms(frame), 1e-7))
 
 fun rms(frame: FloatArray): Double {

@@ -7,10 +7,6 @@ import kotlin.math.roundToInt
 
 data class PitchEstimate(val frequency: Double, val confidence: Double)
 
-/**
- * YIN pitch detector (de Cheveigné & Kawahara, 2002) with the difference function computed by FFT.
- * Reuses its buffers between calls, so one instance must not be shared between threads.
- */
 class YinPitchDetector(
     private val sampleRate: Int,
     private val frameSize: Int,
@@ -18,15 +14,15 @@ class YinPitchDetector(
     maxFrequency: Double = 1_200.0,
     private val threshold: Double = 0.15,
     private val maxThreshold: Double = 0.35,
+    private val cleanDip: Double = CLEAN_DIP,
+    private val noisyDip: Double = NOISY_DIP,
 ) {
     private val tauMin = max(2, (sampleRate / maxFrequency).toInt())
     private val tauMax = ceil(sampleRate / minFrequency).toInt()
     private val window = frameSize - tauMax
     private val fft = Fft(frameSize)
-
-    /** Raw difference function d(τ). */
     private val diff = DoubleArray(tauMax + 1)
-    /** Cumulative mean normalized difference d'(τ). */
+
     private val cmnd = DoubleArray(tauMax + 1)
     private val energy = DoubleArray(frameSize + 1)
     private val headRe = DoubleArray(frameSize)
@@ -38,7 +34,6 @@ class YinPitchDetector(
         require(window >= tauMax) { "A frame of $frameSize samples is too short for $minFrequency Hz" }
     }
 
-    /** Fundamental frequency of [frame], or null if the frame isn't clearly periodic. */
     fun detect(frame: FloatArray): PitchEstimate? {
         require(frame.size >= frameSize) { "Expected $frameSize samples, got ${frame.size}" }
         difference(frame)
@@ -46,19 +41,12 @@ class YinPitchDetector(
         val limit = dipLimit() ?: return null
         val dip = firstDip(limit) ?: return null
         val period = refine(dip)
-        // A period pushed against the end of the lag range belongs to a note below the range.
         if (!period.isFinite() || period >= tauMax - 1) return null
         return PitchEstimate(sampleRate / period, 1.0 - cmnd[dip.lowest])
     }
 
-    /** A stretch of lags under the dip limit, and its lowest point. */
     private class Dip(val start: Int, val end: Int, val lowest: Int)
 
-    /**
-     * d(τ) = Σ (x[j] − x[j+τ])² over j < window, expanded into two energies and a cross-correlation.
-     * The correlation of the frame's head with the whole frame comes from one FFT round trip;
-     * j + τ never passes the frame end, so the circular FFT needs no padding.
-     */
     private fun difference(x: FloatArray) {
         energy[0] = 0.0
         for (i in 0 until frameSize) {
@@ -70,7 +58,6 @@ class YinPitchDetector(
         }
         fft.transform(headRe, headIm)
         fft.transform(frameRe, frameIm)
-        // conj(Head) · Frame, written into the frame arrays.
         for (k in 0 until frameSize) {
             val re = headRe[k] * frameRe[k] + headIm[k] * frameIm[k]
             val im = headRe[k] * frameIm[k] - headIm[k] * frameRe[k]
@@ -78,7 +65,6 @@ class YinPitchDetector(
             frameIm[k] = im
         }
         fft.transform(frameRe, frameIm, inverse = true)
-
         val headEnergy = energy[window]
         for (tau in 1..tauMax) {
             val shiftedEnergy = energy[tau + window] - energy[tau]
@@ -95,12 +81,6 @@ class YinPitchDetector(
         }
     }
 
-    /**
-     * How deep a dip has to be. A clean note dips far below [threshold]. When the guitar is barely
-     * louder than the room (unplugged, phone a metre away) every dip is shallower, so the limit
-     * follows the deepest dip up to [maxThreshold]; the first dip nearly as deep as the deepest
-     * still wins, which keeps the true period ahead of its multiples.
-     */
     private fun dipLimit(): Double? {
         var deepest = Double.MAX_VALUE
         for (tau in tauMin until tauMax) if (cmnd[tau] < deepest) deepest = cmnd[tau]
@@ -108,12 +88,6 @@ class YinPitchDetector(
         return max(threshold, deepest + NEARLY_AS_DEEP)
     }
 
-    /**
-     * The first dip under [limit]. The whole dip is scanned rather than walked downhill: on low
-     * notes it is hundreds of lags wide and noise ripples would stop a walk early. For the same
-     * reason it only ends once the function climbs clearly back above the limit — otherwise a
-     * ripple at the dip's edge would pass for the whole dip.
-     */
     private fun firstDip(limit: Double): Dip? {
         var tau = tauMin
         while (tau < tauMax && cmnd[tau] >= limit) tau++
@@ -127,23 +101,18 @@ class YinPitchDetector(
         return Dip(start, tau, lowest)
     }
 
-    /** Sub-sample period from least-squares parabolas through the raw difference function. */
     private fun refine(dip: Dip): Double {
         val narrow = max(2, dip.lowest / 96)
-        // A clean dip is sharp: a few lags either side pin it down, and a wider fit would pick up
-        // the ripple of the analysis window itself.
-        if (cmnd[dip.lowest] < CLEAN_DIP) {
+        val depth = cmnd[dip.lowest]
+        if (depth < cleanDip) {
             val c = dip.lowest
             return c + parabolaVertex(c, minOf(narrow, c - 1, tauMax - c))
         }
-        // A noisy dip (quiet guitar, loud room) is shallower with a flat, ragged bottom whose lowest
-        // sample can sit tens of lags off. The raw function is still symmetric about the true
-        // period, so fit across the whole dip and re-centre on the vertex until it settles.
-        val halfWidth = max(narrow, (dip.end - dip.start) / 2)
+        val noisiness = ((depth - cleanDip) / (noisyDip - cleanDip)).coerceIn(0.0, 1.0)
+        val halfWidth = narrow + ((max(narrow, (dip.end - dip.start) / 2) - narrow) * noisiness).roundToInt()
         var center = dip.lowest.toDouble()
         repeat(REFINE_PASSES) {
             val c = center.roundToInt()
-            // Kept off the ends of the lag range so the fit always has neighbours on both sides.
             val vertex = (c + parabolaVertex(c, minOf(halfWidth, c - 1, tauMax - c))).coerceIn(1.0, tauMax - 1.0)
             if (abs(vertex - center) < 0.01) return vertex
             center = vertex
@@ -151,7 +120,6 @@ class YinPitchDetector(
         return center
     }
 
-    /** Vertex offset from [c] of the least-squares parabola through diff[c − k .. c + k]. */
     private fun parabolaVertex(c: Int, k: Int): Double {
         if (k < 1) return 0.0
         var sumY = 0.0
@@ -177,8 +145,8 @@ class YinPitchDetector(
     private companion object {
         const val NEARLY_AS_DEEP = 0.05
         const val DIP_HYSTERESIS = 0.03
-        /** Below this the dip is sharp enough that noise no longer moves its lowest sample. */
-        const val CLEAN_DIP = 0.05
+        const val CLEAN_DIP = 0.003
+        const val NOISY_DIP = 0.03
         const val REFINE_PASSES = 4
     }
 }

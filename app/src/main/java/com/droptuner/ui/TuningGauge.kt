@@ -28,22 +28,20 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 const val GAUGE_ASPECT = 1.8f
+
 private const val RANGE_CENTS = 50.0
-/** Needle swing to each side of vertical at ±[RANGE_CENTS]. */
+
 private const val SWING_RAD = 65.0 * PI / 180
+
 private val MINOR_TICKS = listOf(1, 2, 3, 4, 15, 30, 40)
+
 private val MAJOR_TICKS = listOf(5, 10, 20, 50)
 
-/**
- * Square-root scale: the last few cents get most of the dial, so ±1 cent is a visible
- * swing while ±50 still fits.
- */
 private fun angleOf(cents: Double): Double {
     val c = cents.coerceIn(-RANGE_CENTS, RANGE_CENTS)
     return -PI / 2 + sign(c) * sqrt(abs(c) / RANGE_CENTS) * SWING_RAD
 }
 
-/** Needle meter for ±50 cents; [cents] = null parks a grey needle in the middle. */
 @Composable
 fun TuningGauge(cents: Double?, modifier: Modifier = Modifier) {
     val needle by animateFloatAsState(
@@ -53,16 +51,13 @@ fun TuningGauge(cents: Double?, modifier: Modifier = Modifier) {
     )
     val color by animateColorAsState(TunerColors.forCents(cents), label = "needleColor")
     val labels = rememberTextMeasurer()
-
     Canvas(modifier.fillMaxWidth().aspectRatio(GAUGE_ASPECT)) {
         val pivot = Offset(size.width / 2, size.height - 10.dp.toPx())
         val radius = min(size.width / 2 / sin(SWING_RAD).toFloat(), pivot.y) * 0.9f
-
         fun at(c: Double, r: Float): Offset {
             val angle = angleOf(c)
             return pivot + Offset((cos(angle) * r).toFloat(), (sin(angle) * r).toFloat())
         }
-
         val zone = (angleOf(IN_TUNE_CENTS) + PI / 2) * 180 / PI
         drawArc(
             color = TunerColors.InTune.copy(alpha = 0.18f),

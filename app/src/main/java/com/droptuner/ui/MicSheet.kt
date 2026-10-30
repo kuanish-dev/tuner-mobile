@@ -29,21 +29,16 @@ import androidx.compose.ui.unit.sp
 import com.droptuner.audio.InputInfo
 import com.droptuner.audio.InputState
 import com.droptuner.audio.MicSource
-import com.droptuner.dsp.INPUT_GATE_DB
 import kotlin.math.roundToInt
 
 private const val METER_MIN_DB = -90.0
+
 private const val METER_MAX_DB = -20.0
 
 private fun meterFraction(db: Double) = ((db - METER_MIN_DB) / (METER_MAX_DB - METER_MIN_DB)).coerceIn(0.0, 1.0).toFloat()
 
-/**
- * Mic level from −90 to −20 dBFS with a mark at the gate: shows at a glance whether the phone
- * hears the guitar at all. The bar reads the level only while drawing and the number lives in its
- * own tiny composable, so the level never recomposes the screen around it.
- */
 @Composable
-fun LevelMeter(inputDb: () -> Float, modifier: Modifier = Modifier, barWidth: Dp = 140.dp, onClick: (() -> Unit)? = null) {
+fun LevelMeter(inputDb: () -> Float, gateDb: () -> Float, modifier: Modifier = Modifier, barWidth: Dp = 140.dp, onClick: (() -> Unit)? = null) {
     Row(
         modifier
             .clip(RoundedCornerShape(8.dp))
@@ -56,7 +51,7 @@ fun LevelMeter(inputDb: () -> Float, modifier: Modifier = Modifier, barWidth: Dp
         Canvas(Modifier.width(barWidth).height(6.dp)) {
             val corner = CornerRadius(size.height / 2)
             val level = meterFraction(inputDb().toDouble())
-            val gate = meterFraction(INPUT_GATE_DB)
+            val gate = meterFraction(gateDb().toDouble())
             drawRoundRect(TunerColors.SurfaceHigh, cornerRadius = corner)
             drawRoundRect(
                 if (level >= gate) TunerColors.Text else TunerColors.Muted,
@@ -81,19 +76,18 @@ private fun DbLabel(inputDb: () -> Float) {
     )
 }
 
-/** Short warning for the main screen when the input itself is the problem, or null. */
 fun inputWarning(state: InputState): Pair<String, String>? = when (state) {
     InputState.SILENT -> "✗ Микрофон молчит" to "Нажми «Микрофон» ниже — там причина и выбор входа"
     InputState.TAKEN -> "✗ Микрофон занят" to "Его забрал звонок, диктофон или голосовой ассистент"
     else -> null
 }
 
-/** Input diagnostics: what is recording, how loud, why it might be silent, and which preset to use. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun MicSheet(
     info: InputInfo,
     inputDb: () -> Float,
+    gateDb: () -> Float,
     sources: List<MicSource>,
     selected: MicSource?,
     onSelect: (MicSource?) -> Unit,
@@ -108,10 +102,11 @@ fun MicSheet(
         Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text("Микрофон", color = TunerColors.Text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
             InputStatus(info)
-            LevelMeter(inputDb, barWidth = 200.dp)
+            LevelMeter(inputDb, gateDb, barWidth = 200.dp)
             Text(
                 "Скажи что-нибудь или хлопни в ладоши — полоска должна прыгать. Чтобы тюнер услышал струну, " +
-                    "полоска должна заходить за оранжевую отметку: электрогитару без комбика держи в 10–30 см от телефона.",
+                    "полоска должна заходить за оранжевую отметку: электрогитару без комбика держи в 10–30 см от телефона. " +
+                    "Отметка сама отходит вправо от шума комнаты — вентилятора или улицы, — и он до детектора не доходит.",
                 color = TunerColors.Muted,
                 fontSize = 14.sp,
             )

@@ -31,7 +31,6 @@ import androidx.compose.ui.unit.sp
 import com.droptuner.music.Tuning
 import com.droptuner.music.Tunings
 
-/** Bottom sheet with every tuning, split into 6/7/8-string tabs and grouped by family. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TuningPicker(current: Tuning, custom: Tuning?, onSelect: (Tuning) -> Unit, onDismiss: () -> Unit) {
